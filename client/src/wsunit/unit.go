@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/url"
 	"time"
-
 	"github.com/gorilla/websocket"
 )
 
