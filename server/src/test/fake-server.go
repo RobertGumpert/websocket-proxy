@@ -16,10 +16,10 @@ type ServerWrapper struct {
 func NewFakeServer() *ServerWrapper {
 	this := new(ServerWrapper)
 	this.Proxy = proxy.NewServer(
-		5, // clients
-		5, // max messages
-		5, // max pool messages for client
-		2, // max count repeat
+		5, // clients - кол-во клиентов
+		5, // max messages - предельное кол-во получаемых сообщений 
+		5, // max pool messages for client - предельноый размер пула подкл. клиентов
+		2, // max count repeat - предельное кол-во попыток отправить сообщение из пула подкл. клиента 
 	)
 	server := httptest.NewServer(this)
 	log.Println(fmt.Sprintf("Server started with address [%s]", server.URL))

@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestProxyFlow(t *testing.T) {
@@ -38,11 +40,19 @@ func TestProxyFlow(t *testing.T) {
 
 	sendMessages := time.NewTicker(time.Second)
 	closeClient := time.NewTicker(13 * time.Second)
+	serverMessages := time.NewTicker(14 * time.Second)
 	index := len(clients) - 1
 
 	for {
 		select {
+		case <-serverMessages.C:
+			server.Proxy.WriteMessage(
+				websocket.TextMessage,
+				[]byte("Message from server"),
+				server.Server.URL,
+			)
 		case <-closeClient.C:
+			// поэтапно отключаем клиентов
 			if index == 0 {
 				time.Sleep(5 * time.Second)
 				return
@@ -50,6 +60,8 @@ func TestProxyFlow(t *testing.T) {
 			clients[index].closeConnection <- struct{}{}
 			index--
 		case <-sendMessages.C:
+			// Шлем сообщения серверу и клиентам для того чтобы убедиться
+			// в том что не блокируются обработкой открытого подключения
 			http.Get(
 				fmt.Sprintf(
 					"%s/msg",

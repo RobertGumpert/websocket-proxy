@@ -50,6 +50,7 @@ func (this *FakeClientWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// Выполняем подключение клиенту
 func (this *FakeClientWrapper) ConnectWithServerByWS(endpoint string) error {
 	this.backend.Scheme = "ws"
 	this.backend.Path = endpoint
@@ -67,6 +68,7 @@ func (this *FakeClientWrapper) ConnectWithServerByWS(endpoint string) error {
 			this.WSAddr,
 		),
 	)
+	// Обрабатываем сокет
 	go this.handleWS()
 	return nil
 }
@@ -74,6 +76,7 @@ func (this *FakeClientWrapper) ConnectWithServerByWS(endpoint string) error {
 func (this *FakeClientWrapper) handleWS() {
 
 	defer func() {
+		// Закрываем подключение с сервером
 		err := this.connection.Close()
 		if err != nil {
 			log.Println("Fnish :", err)
@@ -83,8 +86,11 @@ func (this *FakeClientWrapper) handleWS() {
 	go func() {
 		defer close(this.done)
 		for {
+			// Получаем сообщение от прокси сервера
 			_, msg, err := this.connection.ReadMessage()
 			if err != nil {
+				// Клиента отключили или соединение по какой-то причине
+				// завершено сервером
 				log.Println(
 					fmt.Sprintf(
 						" ----> Client [%d] addr [%s] receive message with error [%s]",
@@ -93,8 +99,10 @@ func (this *FakeClientWrapper) handleWS() {
 						err.Error(),
 					),
 				)
+				// Завершаем чтение
 				return
 			}
+			// Выводим сообщение
 			log.Println(
 				fmt.Sprintf(
 					" ----> Client [%d] addr [%s] receive message [%s]",
@@ -110,8 +118,11 @@ func (this *FakeClientWrapper) handleWS() {
 	for {
 		select {
 		case <-this.done:
+			// Звершаем отправку
 			return
 		case <-timer.C:
+			// Для наглядности (не засорять консоль) отправляет сообщения
+			// только первыый клиент
 			if this.ID == 0 {
 				err := this.connection.WriteMessage(
 					websocket.TextMessage,
@@ -120,11 +131,13 @@ func (this *FakeClientWrapper) handleWS() {
 						this.WSAddr,
 					)))
 				if err != nil {
-					log.Println("write:", err)
+					// Звершаем отправку
+					log.Println(err)
 					return
 				}
 			}
 		case <-this.closeConnection:
+			// Закрываем клиента извне (из теста)
 			err := this.connection.WriteMessage(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(
@@ -133,7 +146,7 @@ func (this *FakeClientWrapper) handleWS() {
 				),
 			)
 			if err != nil {
-				log.Println("write close:", err)
+				log.Println(err)
 				return
 			}
 		}
