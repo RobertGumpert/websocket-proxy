@@ -5,41 +5,37 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"ws-server/src/stack"
+	"ws-server/src/proxy"
 )
 
-type FakeStackWrapper struct {
-	Stack  *stack.RemoteClientsStack
+type ServerWrapper struct {
+	Proxy  *proxy.Server
 	Server *httptest.Server
 }
 
-func NewFakeStackWrapper(
-	sizeMessagesStack int,
-	sizeClientsStack int,
-) *FakeStackWrapper {
-	st := stack.NewStack(
-		sizeMessagesStack,
-		sizeClientsStack,
+func NewFakeServer() *ServerWrapper {
+	this := new(ServerWrapper)
+	this.Proxy = proxy.NewServer(
+		5, // clients
+		5, // max messages
+		5, // max pool messages for client
+		2, // max count repeat
 	)
-	this := &FakeStackWrapper{
-		Stack: st,
-	}
 	server := httptest.NewServer(this)
 	log.Println(fmt.Sprintf("Server started with address [%s]", server.URL))
 	this.Server = server
 	return this
 }
 
-func (this *FakeStackWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (this *ServerWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/ws":
-		err := this.Stack.AddClient(w, r, false)
-		if err != nil {
-			log.Fatal(err)
+		if err := this.Proxy.AddNewClient(w, r); err != nil {
+			log.Println(err)
 		}
 	case "/msg":
 		log.Println(
-			"Receive API message on SERVER",
+			"Server receive API message",
 		)
 	}
 }

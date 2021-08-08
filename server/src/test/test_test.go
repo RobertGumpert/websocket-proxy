@@ -2,85 +2,68 @@ package test
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 )
 
-var (
-	countMessages = 100
-	countClients  = 5
-)
-
-func TestStackFlow(t *testing.T) {
+func TestProxyFlow(t *testing.T) {
+	server := NewFakeServer()
+	serverURL, err := url.Parse(server.Server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var (
-		fakeClients = make([]*FakeClientWrapper, 0)
+		clients = make([]*FakeClientWrapper, 0)
 	)
-	fakeServer := NewFakeStackWrapper(countMessages, countClients)
-	for i := 0; i < countClients; i++ {
-		fakeClient := NewFakeClientWrapper(fakeServer.Server, i)
-		resp, err := http.Get(
-			fmt.Sprintf("%s/ws",
-				fakeClient.Server.URL,
+	for i := 0; i < 5; i++ {
+		client := NewFakeClient(
+			i,
+			serverURL,
+		)
+		_, err := http.Get(
+			fmt.Sprintf(
+				"%s/ws",
+				client.ServerAddr,
 			),
 		)
 		if err != nil {
-			t.Fatal(
-				fmt.Sprintf(
-					"Code [%s], err [%s]",
-					resp.Status,
-					err.Error(),
-				),
-			)
+			log.Println(err)
+		} else {
+			clients = append(clients, client)
 		}
-		fakeClients = append(fakeClients, fakeClient)
 	}
 
-	timerTestFinish := time.NewTicker(35 * time.Second)
-	timerForAPIReq := time.NewTicker(time.Second)
+	sendMessages := time.NewTicker(time.Second)
+	closeClient := time.NewTicker(13 * time.Second)
+	index := len(clients) - 1
 
 	for {
 		select {
-		case <-timerForAPIReq.C:
-			resp, err := http.Get(
-				fmt.Sprintf("%s/msg",
-					fakeServer.Server.URL,
+		case <-closeClient.C:
+			if index == 0 {
+				time.Sleep(5 * time.Second)
+				return
+			}
+			clients[index].closeConnection <- struct{}{}
+			index--
+		case <-sendMessages.C:
+			http.Get(
+				fmt.Sprintf(
+					"%s/msg",
+					server.Server.URL,
 				),
 			)
-			if err != nil {
-				t.Fatal(
+			for _, cl := range clients {
+				http.Get(
 					fmt.Sprintf(
-						"Code [%s], err [%s]",
-						resp.Status,
-						err.Error(),
+						"%s/msg",
+						cl.ServerAddr,
 					),
 				)
 			}
-			for _, cl := range fakeClients {
-				resp, err := http.Get(
-					fmt.Sprintf("%s/msg",
-						cl.Server.URL,
-					),
-				)
-				if err != nil {
-					t.Fatal(
-						fmt.Sprintf(
-							"Code [%s], err [%s]",
-							resp.Status,
-							err.Error(),
-						),
-					)
-				}
-			}
-		case <-timerTestFinish.C:
-			// for _, cl := range fakeClients {
-			// 	err := cl.Unit.SendMessageOnClose("")
-			// 	if err != nil {
-			// 		log.Fatal(err)
-			// 	}
-			// }
-			fakeServer.Stack.CloseConnectionWithAllClients()
-			return
 		}
 	}
 }

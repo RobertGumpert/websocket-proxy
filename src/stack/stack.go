@@ -79,17 +79,20 @@ func (this *RemoteClientsStack) receiveErrors() {
 	for err := range this.stackErrors {
 		this.mx.Lock()
 		cl := this.clients[err.RemoteAddr]
-		log.Println(fmt.Sprintf("Receive error [%s] from remote client [%s]", err.Error, cl.Host))
-		switch err.ErrorType {
-		case wsunit.UndefinedError:
-			if err := cl.SendMessageOnClose(); err != nil {
-				log.Println(fmt.Sprintf("Close connect with client [%s] have error [%s]", cl.Host, err.Error()))
-			}
-		case wsunit.CloseConnection:
-			if err := cl.HardCloseConnection(); err != nil {
-				log.Println(fmt.Sprintf("Close connect with client [%s] have error [%s]", cl.Host, err.Error()))
-			}
+		if cl == nil {
+			continue
 		}
+		log.Println(fmt.Sprintf("Receive error [%s] from remote client [%s]", err.Error, cl.Host))
+		// switch err.ErrorType {
+		// case wsunit.UndefinedError:
+		// 	if err := cl.SendMessageOnClose(); err != nil {
+		// 		log.Println(fmt.Sprintf("Close connect with client [%s] have error [%s]", cl.Host, err.Error()))
+		// 	}
+		// case wsunit.CloseConnection:
+		// 	if err := cl.HardCloseConnection(); err != nil {
+		// 		log.Println(fmt.Sprintf("Close connect with client [%s] have error [%s]", cl.Host, err.Error()))
+		// 	}
+		// }
 		this.clients[err.RemoteAddr] = nil
 		this.mx.Unlock()
 	}

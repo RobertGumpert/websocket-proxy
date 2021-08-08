@@ -8,60 +8,38 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/RobertGumpert/wsunit"
+	"github.com/gorilla/websocket"
 )
 
-func chans(mb int, cb int) (receiveChannel chan wsunit.RecievedMessage, closeChannel chan wsunit.ConnectionCloser) {
-	return make(chan wsunit.RecievedMessage, mb), make(chan wsunit.ConnectionCloser, cb)
-}
-
 type FakeClientWrapper struct {
-	Unit           *wsunit.Unit
-	Server         *httptest.Server
-	URL            *url.URL
-	remoteServer   *httptest.Server
-	receiveChannel chan wsunit.RecievedMessage
-	closeChannel   chan wsunit.ConnectionCloser
-	ID             int
+	backend         *url.URL
+	Server          *httptest.Server
+	ServerAddr      string
+	WSAddr          string
+	connection      *websocket.Conn
+	ID              int
+	done            chan struct{}
+	closeConnection chan struct{}
 }
 
-func NewFakeClientWrapper(remoteServer *httptest.Server, id int) *FakeClientWrapper {
-	receiveChannel, closeChannel := chans(100, 1)
-	unit := wsunit.NewUnit(receiveChannel, closeChannel)
-	unit.TurnOnOffLogs()
-	this := &FakeClientWrapper{
-		Unit:           unit,
-		remoteServer:   remoteServer,
-		receiveChannel: receiveChannel,
-		closeChannel:   closeChannel,
-		ID:             id,
-	}
-	server := httptest.NewServer(this)
-	log.Println(fmt.Sprintf("Client [%d] started with address [%s]", this.ID, server.URL))
-	u, err := url.Parse(server.URL)
-	if err != nil {
-		log.Fatal(err)
-	}
-	this.URL = u
-	this.Server = server
+func NewFakeClient(id int, backend *url.URL) *FakeClientWrapper {
+	this := new(FakeClientWrapper)
+	this.Server = httptest.NewServer(this)
+	this.ServerAddr = this.Server.URL
+	this.backend = backend
+	this.ID = id
+	this.done = make(chan struct{})
+	this.closeConnection = make(chan struct{})
 	return this
 }
 
 func (this *FakeClientWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/ws":
-		u, err := url.Parse(this.remoteServer.URL)
+		err := this.ConnectWithServerByWS("/ws")
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
-		u.Path = "/ws"
-		_, err = this.Unit.AsRemoteServerUnit(u)
-		if err != nil {
-			log.Fatal(err)
-		}
-		go this.send()
-		go this.receive()
-		go this.receiveErrors()
 	case "/msg":
 		log.Println(
 			fmt.Sprintf(
@@ -72,43 +50,91 @@ func (this *FakeClientWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// Для наглядности будем
-// отправлять сообщения только с первого клиента (не засорять консоль)
-//
-func (this *FakeClientWrapper) send() {
-	if this.ID == 0 {
-		timer := time.NewTicker(time.Duration(5) * time.Second)
-		for range timer.C {
-			err := this.Unit.CreateMessageAndSend(
-				fmt.Sprintf("Message by client [%d]", this.ID),
+func (this *FakeClientWrapper) ConnectWithServerByWS(endpoint string) error {
+	this.backend.Scheme = "ws"
+	this.backend.Path = endpoint
+	connection, _, err := websocket.DefaultDialer.Dial(this.backend.String(), nil)
+	if err != nil {
+		return err
+	}
+	this.connection = connection
+	this.WSAddr = connection.LocalAddr().String()
+	log.Println(
+		fmt.Sprintf(
+			"Client [%d] on adress [%s] start ws on adress [%s]",
+			this.ID,
+			this.ServerAddr,
+			this.WSAddr,
+		),
+	)
+	go this.handleWS()
+	return nil
+}
+
+func (this *FakeClientWrapper) handleWS() {
+
+	defer func() {
+		err := this.connection.Close()
+		if err != nil {
+			log.Println("Fnish :", err)
+		}
+	}()
+
+	go func() {
+		defer close(this.done)
+		for {
+			_, msg, err := this.connection.ReadMessage()
+			if err != nil {
+				log.Println(
+					fmt.Sprintf(
+						" ----> Client [%d] addr [%s] receive message with error [%s]",
+						this.ID,
+						this.WSAddr,
+						err.Error(),
+					),
+				)
+				return
+			}
+			log.Println(
+				fmt.Sprintf(
+					" ----> Client [%d] addr [%s] receive message [%s]",
+					this.ID,
+					this.WSAddr,
+					string(msg),
+				),
+			)
+		}
+	}()
+
+	timer := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-this.done:
+			return
+		case <-timer.C:
+			if this.ID == 0 {
+				err := this.connection.WriteMessage(
+					websocket.TextMessage,
+					[]byte(fmt.Sprintf(
+						"Message from [%s] client",
+						this.WSAddr,
+					)))
+				if err != nil {
+					log.Println("write:", err)
+					return
+				}
+			}
+		case <-this.closeConnection:
+			err := this.connection.WriteMessage(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(
+					websocket.CloseNormalClosure,
+					"goobye",
+				),
 			)
 			if err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
-}
-
-func (this *FakeClientWrapper) receive() {
-	for msg := range this.receiveChannel {
-		log.Println(
-			fmt.Sprintf(
-				" --------> Receive WS message on client [%d], msg: [%s]",
-				this.ID,
-				string(msg.Content),
-			),
-		)
-	}
-}
-
-func (this *FakeClientWrapper) receiveErrors() {
-	for err := range this.closeChannel {
-		switch err.ErrorType {
-		case wsunit.CloseConnection:
-			if err := this.Unit.Close(); err != nil {
-				log.Println(fmt.Sprintf("---> Client [%d] when trying to close the connection have error [%s]", this.ID, err.Error()))
-			} else {
-				log.Println(fmt.Sprintf("---> Client [%d] close the connection", this.ID))
+				log.Println("write close:", err)
+				return
 			}
 		}
 	}
