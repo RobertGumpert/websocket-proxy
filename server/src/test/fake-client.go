@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"time"
-
 	"github.com/gorilla/websocket"
 )
 

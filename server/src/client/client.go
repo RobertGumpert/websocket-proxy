@@ -186,6 +186,9 @@ func (this *Client) send() {
 
 func (this *Client) read() {
 	for {
+
+		log.Println("Read: ", this.connection.RemoteAddr().String())
+
 		if !this.possiblySendingMessages {
 			// Если "закрыли" горутину на запись,
 			// то завершаем и горутину на чтение

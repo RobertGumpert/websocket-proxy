@@ -20,7 +20,7 @@ func TestProxyFlow(t *testing.T) {
 	var (
 		clients = make([]*FakeClientWrapper, 0)
 	)
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 2; i++ {
 		client := NewFakeClient(
 			i,
 			serverURL,
