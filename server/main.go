@@ -1,16 +1,16 @@
 package main
 
 import (
-	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
-	"ws-server/src/proxy"
+	"ws-server/src/wsserver"
 
+	"github.com/RobertGumpert/gopherpc"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 )
 
@@ -43,10 +43,10 @@ func main() {
 	if !exist {
 		log.Fatal("PORT NOT FOUND.")
 	}
-	maxCountClients := func() int {
-		env, exist := os.LookupEnv("CLIENTS_LIMIT")
+	MAX_POOL_CLIENTS := func() int {
+		env, exist := os.LookupEnv("MAX_POOL_CLIENTS")
 		if !exist {
-			log.Fatal("CLIENTS_LIMIT NOT FOUND.")
+			log.Fatal("MAX_POOL_CLIENTS NOT FOUND.")
 		}
 		n, err := strconv.Atoi(env)
 		if err != nil {
@@ -54,10 +54,10 @@ func main() {
 		}
 		return n
 	}()
-	maximumLoad := func() int {
-		env, exist := os.LookupEnv("MESSAGES_LIMIT")
+	MAX_MESSAGES_PER_SECOND := func() int {
+		env, exist := os.LookupEnv("MAX_MESSAGES_PER_SECOND")
 		if !exist {
-			log.Fatal("MESSAGES_LIMIT NOT FOUND.")
+			log.Fatal("MAX_MESSAGES_PER_SECOND NOT FOUND.")
 		}
 		n, err := strconv.Atoi(env)
 		if err != nil {
@@ -65,10 +65,10 @@ func main() {
 		}
 		return n
 	}()
-	maximumPoolSize := func() int {
-		env, exist := os.LookupEnv("POOL_SIZE_LIMIT")
+	MAX_POOL_RETRY_MESSAGES := func() int {
+		env, exist := os.LookupEnv("MAX_POOL_RETRY_MESSAGES")
 		if !exist {
-			log.Fatal("POOL_SIZE_LIMIT NOT FOUND.")
+			log.Fatal("MAX_POOL_RETRY_MESSAGES NOT FOUND.")
 		}
 		n, err := strconv.Atoi(env)
 		if err != nil {
@@ -76,48 +76,70 @@ func main() {
 		}
 		return n
 	}()
-	maximumCountRepeat := func() int {
-		env, exist := os.LookupEnv("REPEAT_LIMIT")
-		if !exist {
-			log.Fatal("REPEAT_LIMIT NOT FOUND.")
-		}
-		n, err := strconv.Atoi(env)
-		if err != nil {
-			log.Fatal(err)
-		}
-		return n
-	}()
-	proxyServer := proxy.NewServer(
-		maxCountClients,
-		maximumLoad,
-		maximumPoolSize,
-		maximumCountRepeat,
+	proxyServer := wsserver.NewServer(
+		MAX_POOL_CLIENTS,
+		MAX_MESSAGES_PER_SECOND,
+		MAX_POOL_RETRY_MESSAGES,
 	)
 	server := gin.Default()
 	server.GET("/switch/to/ws", func(c *gin.Context) {
-		err := proxyServer.AddNewClient(
+		err := proxyServer.NewClient(
 			http.ResponseWriter(c.Writer),
 			c.Request,
 		)
+		if err != nil {
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+	})
+	server.POST("/rpc", func(c *gin.Context) {
+		jsonData, err := ioutil.ReadAll(c.Request.Body)
+		if err != nil {
+			response := gopherpc.Error(
+				gopherpc.ErrParse,
+				err.Error(),
+			)
+			c.AbortWithStatusJSON(http.StatusBadRequest, response)
+			return
+		}
+		request, response, err := gopherpc.ParseRequest(jsonData)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, response)
+			return
+		}
+		switch request.Method {
+		case "echo":
+			report := proxyServer.GetReport()
+			response, err :=request.Response(report)
+			if err != nil {
+				response := gopherpc.Error(
+					gopherpc.ErrInternalError,
+					err.Error(),
+				)
+				c.AbortWithStatusJSON(http.StatusBadRequest, response)
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusOK, response)
+			return
+		case "sendMessage":
+			response, err := request.ParseParams(new(message))
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusBadRequest, response)
+				return
+			}
+			proxyServer.SendMessage(
+				request.Params.(*message).Content,
+			)
+			c.AbortWithStatus(http.StatusOK)
+			return
+		}
+		
 		if err != nil {
 			c.AbortWithStatus(http.StatusLocked)
 			return
 		}
 	})
-	server.POST("/send/message", func(c *gin.Context) {
-		msg := new(message)
-		if err := c.BindJSON(msg); err != nil {
-			log.Println(err)
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-		proxyServer.WriteMessage(
-			websocket.TextMessage,
-			[]byte(msg.Content),
-			fmt.Sprintf("127.0.0.1%s", port),
-		)
-		c.AbortWithStatus(http.StatusOK)
-	})
+
 	err := server.Run(port)
 	if err != nil {
 		log.Fatal(err)

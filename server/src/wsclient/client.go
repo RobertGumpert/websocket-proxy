@@ -2,21 +2,21 @@ package wsclient
 
 import (
 	"fmt"
+	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
 	"sync"
 	"ws-server/src/model"
-	"github.com/gorilla/websocket"
 )
 
 type CallbackOnReceive func(msg model.WSMessage)
 
 type Client struct {
-	connection                *websocket.Conn
-	eventOnCloseConnection    chan struct{}
-	connectionIsClosed        bool
-	mx                        *sync.Mutex
-	Address                   model.RemoteAddress
+	connection             *websocket.Conn
+	eventOnCloseConnection chan struct{}
+	connectionIsClosed     bool
+	mx                     *sync.Mutex
+	Address                model.RemoteAddress
 }
 
 func NewClient(w http.ResponseWriter, r *http.Request) (*Client, error) {
@@ -30,12 +30,14 @@ func NewClient(w http.ResponseWriter, r *http.Request) (*Client, error) {
 		connection.Close()
 		return nil, err
 	}
+	
 	this := &Client{
-		connection:                connection,
-		Address:                   address,
-		eventOnCloseConnection:    make(chan struct{}),
-		connectionIsClosed:        false,
-		mx:                        new(sync.Mutex),
+		connection:             connection,
+		Address:                address,
+
+		eventOnCloseConnection: make(chan struct{}),
+		connectionIsClosed:     false,
+		mx:                     new(sync.Mutex),
 	}
 	return this, nil
 }
@@ -78,14 +80,13 @@ func (this *Client) receiveMessages(callback CallbackOnReceive) {
 			return
 		}
 		go callback(model.WSMessage{
-			Type:    msgType,
-			Content: msgBytes,
-			Err:     err,
-			SenderAddress:  this.Address,
+			Type:          msgType,
+			Content:       msgBytes,
+			Err:           err,
+			SenderAddress: this.Address,
 		})
 	}
 }
-
 
 func (this *Client) Send(msg model.WSMessage) error {
 	if this.connectionIsClosed {

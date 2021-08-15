@@ -49,6 +49,7 @@ func (this *poolClients) Iterate() <-chan clientPoolTuple {
 				ClientWrapper: client,
 			}
 		}
+		close(c)
 		return
 	}()
 	return c

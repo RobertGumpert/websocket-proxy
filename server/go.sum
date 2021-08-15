@@ -1,3 +1,7 @@
+github.com/RobertGumpert/gopherpc v1.0.0 h1:igQi4/UiKyGriV/+uPxTU1yU/5RWeNNFIQSsM9HowmU=
+github.com/RobertGumpert/gopherpc v1.0.0/go.mod h1:BeteFGT4wkijVjpbZXCTvBcykyj0FBVYrNEq8Iuo1KQ=
+github.com/RobertGumpert/gopherpc v1.0.1 h1:XES/c5auD5Psr3oY5X6hb/Vg1BnkxZ7s/7sqaKbE/YY=
+github.com/RobertGumpert/gopherpc v1.0.1/go.mod h1:BeteFGT4wkijVjpbZXCTvBcykyj0FBVYrNEq8Iuo1KQ=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=

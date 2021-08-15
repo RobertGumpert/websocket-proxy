@@ -2,12 +2,13 @@ package wstest
 
 import (
 	"fmt"
-	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type FakeClientWrapper struct {
@@ -46,6 +47,8 @@ func (this *FakeClientWrapper) ServeHTTP(w http.ResponseWriter, r *http.Request)
 				this.ID,
 			),
 		)
+	case "/bench":
+		break
 	}
 }
 

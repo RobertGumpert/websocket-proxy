@@ -7,7 +7,14 @@ import (
 	"net/http"
 	"time"
 	"ws-server/src/model"
+
+	"github.com/gorilla/websocket"
 )
+
+type Report struct {
+	Size    int      `json:"size"`
+	Clients []string `json:"client"`
+}
 
 type Server struct {
 	poolRetryMessages []*retryMessageWrapper
@@ -30,6 +37,30 @@ func NewServer(maxPoolClientsSize int, maxCountMessagesPerSecond int, maxPoolRet
 	go this.retrySendingMessages()
 	//
 	return this
+}
+
+func (this *Server) GetReport() Report {
+	report := &Report{
+		Size : this.clients.Size(),
+		Clients: make([]string, 0),
+	}
+	for tuple := range this.clients.Iterate() {
+		if tuple.ClientWrapper == nil {
+			continue
+		}
+		report.Clients = append(report.Clients, string(tuple.Address))
+	}
+	return *report
+}
+
+func (this *Server) SendMessage(message string) {
+	go this.Redirect(
+		model.WSMessage{
+			SenderAddress: model.RemoteAddress("remote"),
+			Type: websocket.TextMessage,
+			Content: []byte(message),
+		},
+	)
 }
 
 func (this *Server) NewClient(w http.ResponseWriter, r *http.Request) error {
@@ -121,16 +152,16 @@ func (this *Server) countNumberReceivedMessagesPerSecond() {
 func (this *Server) retrySendingMessages() {
 	var (
 		ticker = time.NewTicker(time.Second)
-		del = func (index int)  {
-			var(
+		del    = func(index int) {
+			var (
 				temp = make([]*retryMessageWrapper, 0)
 			)
-			for i := 0 ; i < len(this.poolRetryMessages); i++ {
+			for i := 0; i < len(this.poolRetryMessages); i++ {
 				if i == index {
 					continue
 				}
 				temp = append(
-					temp, 
+					temp,
 					this.poolRetryMessages[i],
 				)
 			}
